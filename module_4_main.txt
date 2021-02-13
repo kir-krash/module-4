@@ -10,6 +10,9 @@ SELECT fl.flight_id,
        ac.total_seats aircraft_total_seats,
        ac.economy_seats aircraft_econ_seats,
        ac.total_seats - ac.economy_seats aircraft_business_seats,
+       tfbp.total_boarded_seats,
+       tfbp.total_economy_boarded_seats,
+       tfbp.total_boarded_seats - tfbp.total_economy_boarded_seats total_business_boarded_seats,
        tf.total_amount,
        tf.economy_amount,
        tf.total_amount - tf.economy_amount business_amount
@@ -40,6 +43,22 @@ JOIN
       WHERE s.fare_conditions='Economy'
       GROUP BY 1) s2 ON a.aircraft_code=s2.aircraft_code) ac ON fl.aircraft_code = ac.aircraft_code
 LEFT JOIN
+  (SELECT bp1.flight_id,
+          bp1.total_boarded_seats,
+          bp2.total_economy_boarded_seats
+   FROM
+     (SELECT bp.flight_id,
+             count(bp.seat_no) total_boarded_seats
+      FROM dst_project.boarding_passes bp
+      GROUP BY bp.flight_id) bp1
+   LEFT JOIN
+     (SELECT bp.flight_id,
+             count(bp.seat_no) total_economy_boarded_seats
+      FROM dst_project.boarding_passes bp
+      LEFT JOIN dst_project.ticket_flights tf ON bp.ticket_no=tf.ticket_no
+      WHERE tf.fare_conditions = 'Economy'
+      GROUP BY bp.flight_id) bp2 ON bp1.flight_id=bp2.flight_id) tfbp ON fl.flight_id=tfbp.flight_id
+LEFT JOIN
   (SELECT tf1.flight_id,
           tf1.total_amount,
           tf2.economy_amount
@@ -54,9 +73,9 @@ LEFT JOIN
       FROM dst_project.ticket_flights tf
       WHERE tf.fare_conditions = 'Economy'
       GROUP BY tf.flight_id) tf2 ON tf1.flight_id = tf2.flight_id) tf ON tf.flight_id=fl.flight_id
-WHERE departure_airport = 'AAQ'
-  AND (date_trunc('month', scheduled_departure) in ('2017-01-01',
-                                                    '2017-02-01',
-                                                    '2017-12-01'))
-  AND status not in ('Cancelled')
+WHERE fl.departure_airport = 'AAQ'
+  AND (date_trunc('month', fl.scheduled_departure) in ('2017-01-01',
+                                                       '2017-02-01',
+                                                       '2017-12-01'))
+  AND fl.status not in ('Cancelled')
 ORDER BY total_amount DESC
