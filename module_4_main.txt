@@ -1,0 +1,62 @@
+SELECT fl.flight_id,
+       fl.flight_no,
+       fl.arrival_airport,
+       dist.distance_in_km,
+       (date_part('hour', fl.scheduled_arrival - fl.scheduled_departure)*60+ date_part('minute', fl.scheduled_arrival - fl.scheduled_departure)) scheduled_fligth_time,
+       (date_part('hour', fl.actual_arrival - fl.actual_departure)*60+ date_part('minute', fl.actual_arrival - fl.actual_departure)) actual_fligth_time,
+       (date_part('hour', fl.actual_departure - fl.scheduled_departure)*60+ date_part('minute', fl.actual_departure - fl.scheduled_departure)) fligth_delay,
+       ac.model aircraft_model,
+       ac.range aircraft_range,
+       ac.total_seats aircraft_total_seats,
+       ac.economy_seats aircraft_econ_seats,
+       ac.total_seats - ac.economy_seats aircraft_business_seats,
+       tf.total_amount,
+       tf.economy_amount,
+       tf.total_amount - tf.economy_amount business_amount
+FROM dst_project.flights fl
+JOIN
+  (SELECT a1.airport_code dep_ap,
+          a2.airport_code arr_ap,
+          111.111 * DEGREES(ACOS(LEAST(1.0, COS(RADIANS(a1.latitude)) * COS(RADIANS(a2.latitude)) * COS(RADIANS(a1.longitude - a2.longitude)) + SIN(RADIANS(a1.latitude)) * SIN(RADIANS(a2.latitude))))) AS distance_in_km
+   FROM dst_project.airports AS a1
+   JOIN dst_project.airports AS a2 ON a1.airport_code <> a2.airport_code) dist ON dist.dep_ap=fl.departure_airport
+AND dist.arr_ap=fl.arrival_airport
+JOIN
+  (SELECT a.aircraft_code,
+          a.model,
+          a.range,
+          s1.total_seats,
+          s2.economy_seats
+   FROM dst_project.aircrafts a
+   JOIN
+     (SELECT s.aircraft_code,
+             count(s.seat_no) total_seats
+      FROM dst_project.seats s
+      GROUP BY 1) s1 ON a.aircraft_code=s1.aircraft_code
+   JOIN
+     (SELECT s.aircraft_code,
+             count(s.seat_no) economy_seats
+      FROM dst_project.seats s
+      WHERE s.fare_conditions='Economy'
+      GROUP BY 1) s2 ON a.aircraft_code=s2.aircraft_code) ac ON fl.aircraft_code = ac.aircraft_code
+LEFT JOIN
+  (SELECT tf1.flight_id,
+          tf1.total_amount,
+          tf2.economy_amount
+   FROM
+     (SELECT tf.flight_id,
+             sum(tf.amount) total_amount
+      FROM dst_project.ticket_flights tf
+      GROUP BY tf.flight_id) tf1
+   JOIN
+     (SELECT tf.flight_id,
+             sum(tf.amount) economy_amount
+      FROM dst_project.ticket_flights tf
+      WHERE tf.fare_conditions = 'Economy'
+      GROUP BY tf.flight_id) tf2 ON tf1.flight_id = tf2.flight_id) tf ON tf.flight_id=fl.flight_id
+WHERE departure_airport = 'AAQ'
+  AND (date_trunc('month', scheduled_departure) in ('2017-01-01',
+                                                    '2017-02-01',
+                                                    '2017-12-01'))
+  AND status not in ('Cancelled')
+ORDER BY total_amount DESC
